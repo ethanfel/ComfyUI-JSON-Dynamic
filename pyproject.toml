@@ -1,0 +1,14 @@
+[project]
+name = "comfyui-json-dynamic"
+version = "1.0.0"
+description = "A ComfyUI node that auto-discovers JSON keys and exposes them as typed output slots"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+classifiers = ["Operating System :: OS Independent"]
+
+[project.urls]
+Repository = "https://github.com/ethanfel/ComfyUI-JSON-Dynamic"
+
+[tool.comfy]
+PublisherId = "ethanfel"
+DisplayName = "JSON Dynamic Loader"

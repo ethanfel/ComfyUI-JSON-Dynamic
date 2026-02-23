@@ -35,15 +35,19 @@ A single ComfyUI node that reads any JSON file and **automatically creates outpu
 
 ## Installation
 
+### ComfyUI Manager
+Search for **JSON Dynamic Loader** in the ComfyUI Manager registry.
+
+### Manual
 ```bash
 cd ComfyUI/custom_nodes/
-git clone <this-repo> ComfyUI-JSON-Dynamic
+git clone https://github.com/ethanfel/ComfyUI-JSON-Dynamic.git
 # Restart ComfyUI
 ```
 
 ## Usage
 
-1. Add **JSON Loader (Dynamic)** node to your workflow
+1. Add **JSON Dynamic Loader** node to your workflow
 2. Enter a `json_path` and `sequence_number`
 3. Click **Refresh Outputs**
 4. Outputs appear named after your JSON keys with correct types
@@ -60,7 +64,7 @@ git clone <this-repo> ComfyUI-JSON-Dynamic
   <rect x="20" y="10" width="240" height="220" rx="10" fill="url(#dynBg)" stroke="#2b9348" stroke-width="2" />
   <rect x="20" y="10" width="240" height="28" rx="10" fill="#2b9348" />
   <rect x="20" y="28" width="240" height="10" fill="#2b9348" />
-  <text x="140" y="31" text-anchor="middle" fill="#fff" font-family="sans-serif" font-size="13" font-weight="bold">JSON Loader (Dynamic)</text>
+  <text x="140" y="31" text-anchor="middle" fill="#fff" font-family="sans-serif" font-size="13" font-weight="bold">JSON Dynamic Loader</text>
   <text x="35" y="60" fill="#ccc" font-family="monospace" font-size="10">json_path: /data/prompt.json</text>
   <text x="35" y="78" fill="#ccc" font-family="monospace" font-size="10">sequence_number: 1</text>
   <rect x="45" y="88" width="190" height="24" rx="5" fill="#2b9348" opacity="0.3" stroke="#2b9348" stroke-width="1"/>
