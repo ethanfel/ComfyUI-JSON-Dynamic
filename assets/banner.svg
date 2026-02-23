@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="460" height="90" viewBox="0 0 460 90">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e" />
+      <stop offset="100%" style="stop-color:#16213e" />
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#2b9348" />
+      <stop offset="100%" style="stop-color:#0f3460" />
+    </linearGradient>
+  </defs>
+  <rect width="460" height="90" rx="14" fill="url(#bg)" />
+  <rect x="20" y="65" width="420" height="3" rx="1.5" fill="url(#accent)" opacity="0.6" />
+  <text x="230" y="32" text-anchor="middle" fill="#2b9348" font-family="monospace" font-size="12" font-weight="bold">{ Dynamic }</text>
+  <text x="230" y="54" text-anchor="middle" fill="#eee" font-family="sans-serif" font-size="20" font-weight="bold">ComfyUI JSON Dynamic Loader</text>
+  <text x="230" y="82" text-anchor="middle" fill="#888" font-family="sans-serif" font-size="10">Auto-discover JSON keys as typed output slots</text>
+</svg>
