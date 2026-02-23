@@ -101,24 +101,115 @@ git clone https://github.com/ethanfel/ComfyUI-JSON-Dynamic.git
 
 ## JSON Format
 
-Works with flat JSON or `batch_data` arrays:
+### Flat JSON (single segment)
+
+For simple use cases, the node reads keys directly from the root object. The `sequence_number` input is ignored.
+
+```json
+{
+  "general_prompt": "A cinematic scene...",
+  "seed": 42,
+  "flf": 0.5,
+  "camera": "pan_left"
+}
+```
+
+### Batch JSON (multiple segments)
+
+For multi-shot workflows, wrap entries in a `batch_data` array. Each entry is a **segment** representing one shot/scene with its own settings. The `sequence_number` input selects which segment to read.
 
 ```json
 {
   "batch_data": [
     {
       "sequence_number": 1,
-      "general_prompt": "A cinematic scene...",
+      "general_prompt": "Wide establishing shot of a city",
       "seed": 42,
-      "flf": 0.5,
+      "camera": "static",
+      "flf": 0.0
+    },
+    {
+      "sequence_number": 2,
+      "general_prompt": "Close-up of the protagonist",
+      "seed": 108,
       "camera": "pan_left",
-      "my_custom_key": "any value"
+      "flf": 0.5,
+      "my_custom_key": "only on this segment"
+    },
+    {
+      "sequence_number": 3,
+      "general_prompt": "Aerial drone shot over rooftops",
+      "seed": 77,
+      "camera": "zoom_in",
+      "flf": 0.8
     }
   ]
 }
 ```
 
-Without `batch_data`, reads keys directly from the root object.
+### Segment lookup
+
+The node resolves which segment to read using this logic:
+
+1. **Match by `sequence_number` field** &mdash; scans `batch_data` for an entry whose `sequence_number` matches the input
+2. **Fallback to array index** &mdash; if no match is found, uses `sequence_number - 1` as the array index (clamped to bounds)
+3. **No `batch_data`** &mdash; reads keys from the root object directly
+
+This means segments don't need to be in order and can have gaps (e.g. 1, 5, 10). Each segment can have different keys &mdash; click **Refresh Outputs** after changing `sequence_number` if the keys differ between segments.
+
+<p align="center">
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="200" viewBox="0 0 520 200">
+  <defs>
+    <linearGradient id="segBg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#2d2d3d" />
+      <stop offset="100%" style="stop-color:#1e1e2e" />
+    </linearGradient>
+  </defs>
+
+  <!-- JSON file -->
+  <rect x="10" y="10" width="160" height="180" rx="8" fill="url(#segBg)" stroke="#0f3460" stroke-width="1.5" />
+  <text x="90" y="30" text-anchor="middle" fill="#0f3460" font-family="monospace" font-size="11" font-weight="bold">batch_data[]</text>
+
+  <!-- Segment boxes -->
+  <rect x="22" y="42" width="136" height="38" rx="5" fill="#1a1a2e" stroke="#555" stroke-width="1" />
+  <text x="90" y="56" text-anchor="middle" fill="#6bcb77" font-family="monospace" font-size="9">seq 1: city, seed=42</text>
+  <text x="90" y="70" text-anchor="middle" fill="#888" font-family="monospace" font-size="8">camera=static, flf=0.0</text>
+
+  <rect x="22" y="86" width="136" height="38" rx="5" fill="#1a1a2e" stroke="#2b9348" stroke-width="2" />
+  <text x="90" y="100" text-anchor="middle" fill="#2b9348" font-family="monospace" font-size="9">seq 2: close-up, seed=108</text>
+  <text x="90" y="114" text-anchor="middle" fill="#888" font-family="monospace" font-size="8">camera=pan_left, flf=0.5</text>
+
+  <rect x="22" y="130" width="136" height="38" rx="5" fill="#1a1a2e" stroke="#555" stroke-width="1" />
+  <text x="90" y="144" text-anchor="middle" fill="#6bcb77" font-family="monospace" font-size="9">seq 3: aerial, seed=77</text>
+  <text x="90" y="158" text-anchor="middle" fill="#888" font-family="monospace" font-size="8">camera=zoom_in, flf=0.8</text>
+
+  <!-- Arrow -->
+  <line x1="170" y1="105" x2="210" y2="105" stroke="#2b9348" stroke-width="2" marker-end="url(#segArrow)"/>
+  <defs><marker id="segArrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2b9348"/></marker></defs>
+  <text x="190" y="95" text-anchor="middle" fill="#2b9348" font-family="monospace" font-size="9">seq=2</text>
+
+  <!-- Node -->
+  <rect x="210" y="60" width="180" height="90" rx="8" fill="url(#segBg)" stroke="#2b9348" stroke-width="2" />
+  <rect x="210" y="60" width="180" height="22" rx="8" fill="#2b9348" />
+  <rect x="210" y="74" width="180" height="8" fill="#2b9348" />
+  <text x="300" y="77" text-anchor="middle" fill="#fff" font-family="sans-serif" font-size="10" font-weight="bold">JSON Dynamic Loader</text>
+
+  <circle cx="390" cy="100" r="4" fill="#6bcb77"/>
+  <text x="380" y="103" text-anchor="end" fill="#ccc" font-family="monospace" font-size="9">general_prompt</text>
+  <circle cx="390" cy="116" r="4" fill="#4d96ff"/>
+  <text x="380" y="119" text-anchor="end" fill="#ccc" font-family="monospace" font-size="9">seed</text>
+  <circle cx="390" cy="132" r="4" fill="#6bcb77"/>
+  <text x="380" y="135" text-anchor="end" fill="#ccc" font-family="monospace" font-size="9">camera</text>
+
+  <!-- Output values -->
+  <line x1="394" y1="100" x2="420" y2="100" stroke="#6bcb77" stroke-width="1"/>
+  <text x="425" y="103" fill="#888" font-family="monospace" font-size="9">"Close-up of the protagonist"</text>
+  <line x1="394" y1="116" x2="420" y2="116" stroke="#4d96ff" stroke-width="1"/>
+  <text x="425" y="119" fill="#888" font-family="monospace" font-size="9">108</text>
+  <line x1="394" y1="132" x2="420" y2="132" stroke="#6bcb77" stroke-width="1"/>
+  <text x="425" y="135" fill="#888" font-family="monospace" font-size="9">"pan_left"</text>
+</svg>
+</p>
 
 ## License
 
