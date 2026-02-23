@@ -79,7 +79,7 @@ if PromptServer is not None:
         return web.json_response({"keys": keys, "types": types})
 
 
-class JSONLoaderDynamic:
+class JSONDynamicLoader:
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -124,9 +124,9 @@ class JSONLoaderDynamic:
 
 
 NODE_CLASS_MAPPINGS = {
-    "JSONLoaderDynamic": JSONLoaderDynamic,
+    "JSONDynamicLoader": JSONDynamicLoader,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "JSONLoaderDynamic": "JSON Loader (Dynamic)",
+    "JSONDynamicLoader": "JSON Dynamic Loader",
 }

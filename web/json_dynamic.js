@@ -5,7 +5,7 @@ app.registerExtension({
     name: "json.dynamic.loader",
 
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
-        if (nodeData.name !== "JSONLoaderDynamic") return;
+        if (nodeData.name !== "JSONDynamicLoader") return;
 
         const origOnNodeCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
@@ -96,7 +96,7 @@ app.registerExtension({
                 this.setSize(this.computeSize());
                 app.graph.setDirtyCanvas(true, true);
             } catch (e) {
-                console.error("[JSONLoaderDynamic] Refresh failed:", e);
+                console.error("[JSONDynamicLoader] Refresh failed:", e);
             }
         };
 
