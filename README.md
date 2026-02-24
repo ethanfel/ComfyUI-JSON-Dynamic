@@ -112,6 +112,58 @@ This means segments don't need to be in order and can have gaps (e.g. 1, 5, 10).
   <img src="assets/segment-lookup.svg" alt="Segment lookup diagram showing batch_data selection" />
 </p>
 
+## String & Path Utility Nodes
+
+Four additional nodes that replace common multi-node chains for string and path operations.
+
+### Path Join (`utils/path`)
+
+Joins 1–6 path segments using `os.path.join` with automatic normalization.
+
+| Input | Type | Notes |
+|:---|:---|:---|
+| `segment_1` | STRING | Required |
+| `segment_2` – `segment_6` | STRING | Optional |
+
+**Output:** `path` (STRING)
+
+### String Format (`utils/string`)
+
+Python format-string templating (`{0}/{1:04d}.{2}`) with up to 8 connected inputs. Handles zero-padding, type conversion, and arbitrary templates in one node.
+
+| Input | Type | Notes |
+|:---|:---|:---|
+| `template` | STRING | Format string, e.g. `{0}/{1:04d}` |
+| `v0` – `v7` | any | Optional values to substitute |
+
+**Output:** `string` (STRING)
+
+### String Extract (`utils/string`)
+
+Extracts substrings with 3 modes:
+
+| Mode | Description |
+|:---|:---|
+| `split_take` | Split on delimiter, take part at index (negative indices supported) |
+| `between` | Extract text between two delimiters |
+| `filename_parts` | Decompose path into dirname / basename / extension |
+
+**Outputs:** `result`, `dirname`, `basename`, `extension` (all STRING)
+
+### String Switch (`utils/string`)
+
+Boolean-based selection with built-in default values.
+
+| Input | Type | Notes |
+|:---|:---|:---|
+| `condition` | BOOLEAN | Required |
+| `on_true` / `on_false` | any | Optional connected values |
+| `default_true` / `default_false` | STRING | Fallback widget values |
+
+**Output:** `result` (any)
+
+When a connected input (`on_true`/`on_false`) is present it takes priority; otherwise the corresponding `default_*` string widget is used.
+
 ## License
 
 [Apache 2.0](LICENSE)

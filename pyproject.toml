@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-json-dynamic"
 version = "1.0.0"
-description = "A ComfyUI node that auto-discovers JSON keys and exposes them as typed output slots"
+description = "ComfyUI nodes for dynamic JSON loading and string/path utility operations"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 classifiers = ["Operating System :: OS Independent"]
