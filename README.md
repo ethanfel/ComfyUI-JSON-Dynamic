@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/ComfyUI-Custom%20Node-purple" alt="ComfyUI" />
 </p>
 
-A single ComfyUI node that reads any JSON file and **automatically creates output slots** for every key it finds. No hardcoded outputs &mdash; when your JSON structure changes, just click Refresh.
+A collection of ComfyUI utility nodes: a **dynamic JSON loader** that auto-creates outputs from any JSON file, **string/path helpers**, and a **preview-to-LoadImage bridge** that lets you push generated images (with optional masks) into LoadImage nodes.
 
 ## Features
 
@@ -163,6 +163,31 @@ Boolean-based selection with built-in default values.
 **Output:** `result` (any)
 
 When a connected input (`on_true`/`on_false`) is present it takes priority; otherwise the corresponding `default_*` string widget is used.
+
+## Image Utility Nodes
+
+### Preview to Load Image (`utils/image`)
+
+Previews an image like the built-in PreviewImage node, but also saves a copy to ComfyUI's `input/` folder so you can push it into any **LoadImage** node with one click.
+
+| Input | Type | Notes |
+|:---|:---|:---|
+| `images` | IMAGE | Required |
+| `filename` | STRING | Name for the saved file (without extension, default `preview`) |
+| `mask` | MASK | Optional &mdash; embedded as the PNG alpha channel |
+
+**Widgets (JS-side):**
+
+| Widget | Description |
+|:---|:---|
+| `load_image_node_id` | ID of the target LoadImage node |
+| **Send to Load Image** | Button &mdash; sets the target node's image selector to the saved file |
+
+**How it works:**
+
+1. On execution, the node saves a temp preview (displayed in the node) and a permanent copy to `input/{filename}.png`
+2. If a **mask** is connected, it is embedded as the PNG's alpha channel &mdash; LoadImage will automatically output it as its mask
+3. Enter the target LoadImage node's ID and click **Send to Load Image** &mdash; the target's image dropdown updates immediately, no restart needed
 
 ## License
 
