@@ -63,6 +63,8 @@ if PromptServer is not None:
             seq = 1
         data = read_json_data(json_path)
         target = get_batch_item(data, seq)
+        if not data:
+            return web.json_response({"keys": [], "types": [], "error": "file_not_found"})
         keys = []
         types = []
         if isinstance(target, dict):

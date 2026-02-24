@@ -39,7 +39,14 @@ app.registerExtension({
                 const resp = await api.fetchApi(
                     `/json_dynamic/get_keys?path=${encodeURIComponent(pathWidget.value)}&sequence_number=${seqWidget?.value || 1}`
                 );
-                const { keys, types } = await resp.json();
+                const data = await resp.json();
+                const { keys, types } = data;
+
+                // If the file wasn't found, keep existing outputs and links intact
+                if (data.error === "file_not_found") {
+                    console.warn("[JSONDynamicLoader] File not found, keeping existing outputs:", pathWidget.value);
+                    return;
+                }
 
                 // Store keys and types in hidden widgets for persistence
                 const okWidget = this.widgets?.find(w => w.name === "output_keys");

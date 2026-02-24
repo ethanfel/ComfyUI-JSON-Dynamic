@@ -1,6 +1,6 @@
 [project]
 name = "comfyui-json-dynamic"
-version = "1.2.0"
+version = "1.2.1"
 description = "ComfyUI nodes for dynamic JSON loading and string/path utility operations"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
