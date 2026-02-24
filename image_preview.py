@@ -28,6 +28,9 @@ class JDL_PreviewToLoad:
                 "images": ("IMAGE",),
                 "filename": ("STRING", {"default": "preview"}),
             },
+            "optional": {
+                "mask": ("MASK",),
+            },
             "hidden": {
                 "prompt": "PROMPT",
                 "extra_pnginfo": "EXTRA_PNGINFO",
@@ -39,7 +42,7 @@ class JDL_PreviewToLoad:
     OUTPUT_NODE = True
     CATEGORY = "utils/image"
 
-    def preview_and_save(self, images, filename="preview", prompt=None, extra_pnginfo=None):
+    def preview_and_save(self, images, filename="preview", mask=None, prompt=None, extra_pnginfo=None):
         # Save to temp/ for preview (same as PreviewImage)
         filename_prefix = "ComfyUI" + self.prefix_append
         full_output_folder, fname, counter, subfolder, filename_prefix = (
@@ -84,6 +87,17 @@ class JDL_PreviewToLoad:
 
         first_image = 255.0 * images[0].cpu().numpy()
         first_img = Image.fromarray(np.clip(first_image, 0, 255).astype(np.uint8))
+
+        # Embed mask as alpha channel so LoadImage extracts it
+        if mask is not None:
+            mask_data = mask[0].cpu().numpy() if mask.dim() == 3 else mask.cpu().numpy()
+            # LoadImage inverts alpha (mask = 1 - alpha), so save alpha = 1 - mask
+            alpha = np.clip((1.0 - mask_data) * 255.0, 0, 255).astype(np.uint8)
+            alpha_img = Image.fromarray(alpha)
+            if alpha_img.size != first_img.size:
+                alpha_img = alpha_img.resize(first_img.size, Image.LANCZOS)
+            first_img = first_img.convert("RGBA")
+            first_img.putalpha(alpha_img)
 
         metadata = None
         if not args.disable_metadata:
