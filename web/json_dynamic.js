@@ -17,17 +17,31 @@ app.registerExtension({
                 if (w) { w.type = "hidden"; w.computeSize = () => [0, -4]; }
             }
 
-            // Remove all 32 default outputs from Python RETURN_TYPES
-            while (this.outputs.length > 0) {
-                this.removeOutput(0);
-            }
+            // Do NOT remove default outputs synchronously here.
+            // During graph loading, ComfyUI creates all nodes (firing onNodeCreated)
+            // before configuring them. Other nodes (e.g. Kijai Set/Get) may resolve
+            // links to our outputs during their configure step. If we remove outputs
+            // here, those nodes find no output slot and error out.
+            //
+            // Instead, defer cleanup: for loaded workflows onConfigure sets _configured
+            // before this runs; for new nodes the defaults are cleaned up.
+            this._configured = false;
 
             // Add Refresh button
             this.addWidget("button", "Refresh Outputs", null, () => {
                 this.refreshDynamicOutputs();
             });
 
-            this.setSize(this.computeSize());
+            queueMicrotask(() => {
+                if (!this._configured) {
+                    // New node (not loading) — remove the 32 Python default outputs
+                    while (this.outputs.length > 0) {
+                        this.removeOutput(0);
+                    }
+                    this.setSize(this.computeSize());
+                    app.graph?.setDirtyCanvas(true, true);
+                }
+            });
         };
 
         nodeType.prototype.refreshDynamicOutputs = async function () {
@@ -111,6 +125,7 @@ app.registerExtension({
         const origOnConfigure = nodeType.prototype.onConfigure;
         nodeType.prototype.onConfigure = function (info) {
             origOnConfigure?.apply(this, arguments);
+            this._configured = true;
 
             // Hide internal widgets
             for (const name of ["output_keys", "output_types"]) {
@@ -128,16 +143,23 @@ app.registerExtension({
                 ? otWidget.value.split(",")
                 : [];
 
-            // On load, LiteGraph already restored serialized outputs with links.
-            // Rename and set types to match stored state (preserves links).
-            for (let i = 0; i < this.outputs.length && i < keys.length; i++) {
-                this.outputs[i].name = keys[i].trim();
-                if (types[i]) this.outputs[i].type = types[i];
-            }
+            if (keys.length > 0) {
+                // On load, LiteGraph already restored serialized outputs with links.
+                // Rename and set types to match stored state (preserves links).
+                for (let i = 0; i < this.outputs.length && i < keys.length; i++) {
+                    this.outputs[i].name = keys[i].trim();
+                    if (types[i]) this.outputs[i].type = types[i];
+                }
 
-            // Remove any extra outputs beyond the key count
-            while (this.outputs.length > keys.length) {
-                this.removeOutput(this.outputs.length - 1);
+                // Remove any extra outputs beyond the key count
+                while (this.outputs.length > keys.length) {
+                    this.removeOutput(this.outputs.length - 1);
+                }
+            } else if (this.outputs.length > 0) {
+                // Widget values empty but serialized outputs exist — sync widgets
+                // from the outputs LiteGraph already restored (fallback).
+                if (okWidget) okWidget.value = this.outputs.map(o => o.name).join(",");
+                if (otWidget) otWidget.value = this.outputs.map(o => o.type).join(",");
             }
 
             this.setSize(this.computeSize());
