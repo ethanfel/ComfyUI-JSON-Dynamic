@@ -127,6 +127,19 @@ app.registerExtension({
             origOnConfigure?.apply(this, arguments);
             this._configured = true;
 
+            // === DIAGNOSTIC LOGGING (remove after debugging) ===
+            console.log("[JDL-DEBUG] onConfigure called");
+            console.log("[JDL-DEBUG] info.outputs:", JSON.stringify(info.outputs?.map(o => ({name: o.name, type: o.type}))));
+            console.log("[JDL-DEBUG] info.widgets_values:", JSON.stringify(info.widgets_values));
+            console.log("[JDL-DEBUG] this.outputs BEFORE:", JSON.stringify(this.outputs?.map(o => ({name: o.name, type: o.type}))));
+            const _okw = this.widgets?.find(w => w.name === "output_keys");
+            const _otw = this.widgets?.find(w => w.name === "output_types");
+            console.log("[JDL-DEBUG] okWidget.value BEFORE hide:", JSON.stringify(_okw?.value));
+            console.log("[JDL-DEBUG] otWidget.value BEFORE hide:", JSON.stringify(_otw?.value));
+            console.log("[JDL-DEBUG] okWidget.type:", _okw?.type);
+            console.log("[JDL-DEBUG] all widgets:", JSON.stringify(this.widgets?.map(w => ({name: w.name, type: w.type, value: w.value}))));
+            // === END DIAGNOSTIC ===
+
             // Hide internal widgets
             for (const name of ["output_keys", "output_types"]) {
                 const w = this.widgets?.find(w => w.name === name);
@@ -160,6 +173,12 @@ app.registerExtension({
                         : [];
                 }
             }
+
+            // === DIAGNOSTIC (remove after debugging) ===
+            console.log("[JDL-DEBUG] resolved keys:", JSON.stringify(keys));
+            console.log("[JDL-DEBUG] resolved types:", JSON.stringify(types));
+            console.log("[JDL-DEBUG] this.outputs AFTER resolve:", JSON.stringify(this.outputs?.map(o => ({name: o.name, type: o.type}))));
+            // === END DIAGNOSTIC ===
 
             // Update hidden widgets so the Python backend has keys for execution
             if (keys.length > 0) {
