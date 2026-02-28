@@ -204,6 +204,14 @@ app.registerExtension({
                 }
             }
 
+            // === DIAGNOSTIC (remove after debugging) ===
+            console.log("[JDL-DEBUG] this.outputs AFTER RENAME:", JSON.stringify(this.outputs?.map(o => ({name: o.name, type: o.type}))));
+            const _node = this;
+            setTimeout(() => {
+                console.log("[JDL-DEBUG] this.outputs 1s LATER:", JSON.stringify(_node.outputs?.map(o => ({name: o.name, type: o.type}))));
+            }, 1000);
+            // === END DIAGNOSTIC ===
+
             this.setSize(this.computeSize());
         };
     },
