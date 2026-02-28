@@ -83,6 +83,7 @@ app.registerExtension({
                         // Reuse existing slot object (keeps links intact)
                         const slot = this.outputs[oldSlots[key]];
                         slot.type = type;
+                        slot.label = key;
                         newOutputs.push(slot);
                         delete oldSlots[key];
                     } else {
@@ -127,19 +128,6 @@ app.registerExtension({
             origOnConfigure?.apply(this, arguments);
             this._configured = true;
 
-            // === DIAGNOSTIC LOGGING (remove after debugging) ===
-            console.log("[JDL-DEBUG] onConfigure called");
-            console.log("[JDL-DEBUG] info.outputs:", JSON.stringify(info.outputs?.map(o => ({name: o.name, type: o.type}))));
-            console.log("[JDL-DEBUG] info.widgets_values:", JSON.stringify(info.widgets_values));
-            console.log("[JDL-DEBUG] this.outputs BEFORE:", JSON.stringify(this.outputs?.map(o => ({name: o.name, type: o.type}))));
-            const _okw = this.widgets?.find(w => w.name === "output_keys");
-            const _otw = this.widgets?.find(w => w.name === "output_types");
-            console.log("[JDL-DEBUG] okWidget.value BEFORE hide:", JSON.stringify(_okw?.value));
-            console.log("[JDL-DEBUG] otWidget.value BEFORE hide:", JSON.stringify(_otw?.value));
-            console.log("[JDL-DEBUG] okWidget.type:", _okw?.type);
-            console.log("[JDL-DEBUG] all widgets:", JSON.stringify(this.widgets?.map(w => ({name: w.name, type: w.type, value: w.value}))));
-            // === END DIAGNOSTIC ===
-
             // Hide internal widgets
             for (const name of ["output_keys", "output_types"]) {
                 const w = this.widgets?.find(w => w.name === name);
@@ -149,42 +137,12 @@ app.registerExtension({
             const okWidget = this.widgets?.find(w => w.name === "output_keys");
             const otWidget = this.widgets?.find(w => w.name === "output_types");
 
-            // Primary source: read output names from serialized node info.
-            // Hidden widget values may not survive ComfyUI's serialization,
-            // but info.outputs always contains the correct saved output names.
-            let keys = [];
-            let types = [];
-            const savedOutputs = info.outputs || [];
-            for (let i = 0; i < savedOutputs.length; i++) {
-                if (/^output_\d+$/.test(savedOutputs[i].name)) continue;
-                keys.push(savedOutputs[i].name);
-                types.push(savedOutputs[i].type || "*");
-            }
-
-            // Fallback: try hidden widget values
-            if (keys.length === 0) {
-                const wKeys = okWidget?.value
-                    ? okWidget.value.split(",").filter(k => k.trim())
-                    : [];
-                if (wKeys.length > 0) {
-                    keys = wKeys;
-                    types = otWidget?.value
-                        ? otWidget.value.split(",")
-                        : [];
-                }
-            }
-
-            // === DIAGNOSTIC (remove after debugging) ===
-            console.log("[JDL-DEBUG] resolved keys:", JSON.stringify(keys));
-            console.log("[JDL-DEBUG] resolved types:", JSON.stringify(types));
-            console.log("[JDL-DEBUG] this.outputs AFTER resolve:", JSON.stringify(this.outputs?.map(o => ({name: o.name, type: o.type}))));
-            // === END DIAGNOSTIC ===
-
-            // Update hidden widgets so the Python backend has keys for execution
-            if (keys.length > 0) {
-                if (okWidget) okWidget.value = keys.join(",");
-                if (otWidget) otWidget.value = types.join(",");
-            }
+            const keys = okWidget?.value
+                ? okWidget.value.split(",").filter(k => k.trim())
+                : [];
+            const types = otWidget?.value
+                ? otWidget.value.split(",")
+                : [];
 
             if (keys.length > 0) {
                 for (let i = 0; i < this.outputs.length && i < keys.length; i++) {
@@ -196,22 +154,11 @@ app.registerExtension({
                     this.removeOutput(this.outputs.length - 1);
                 }
             } else if (this.outputs.length > 0) {
-                const realOutputs = this.outputs.filter(
-                    o => !/^output_\d+$/.test(o.name)
-                );
-                if (realOutputs.length > 0) {
-                    if (okWidget) okWidget.value = realOutputs.map(o => o.name).join(",");
-                    if (otWidget) otWidget.value = realOutputs.map(o => o.type).join(",");
-                }
+                // Widget values empty but serialized outputs exist — sync widgets
+                // from the outputs LiteGraph already restored (fallback).
+                if (okWidget) okWidget.value = this.outputs.map(o => o.name).join(",");
+                if (otWidget) otWidget.value = this.outputs.map(o => o.type).join(",");
             }
-
-            // === DIAGNOSTIC (remove after debugging) ===
-            console.log("[JDL-DEBUG] this.outputs AFTER RENAME:", JSON.stringify(this.outputs?.map(o => ({name: o.name, label: o.label, type: o.type}))));
-            const _node = this;
-            setTimeout(() => {
-                console.log("[JDL-DEBUG] this.outputs 1s LATER:", JSON.stringify(_node.outputs?.map(o => ({name: o.name, label: o.label, type: o.type}))));
-            }, 1000);
-            // === END DIAGNOSTIC ===
 
             this.setSize(this.computeSize());
         };
