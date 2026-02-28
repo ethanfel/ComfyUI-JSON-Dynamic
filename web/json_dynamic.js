@@ -136,30 +136,53 @@ app.registerExtension({
             const okWidget = this.widgets?.find(w => w.name === "output_keys");
             const otWidget = this.widgets?.find(w => w.name === "output_types");
 
-            const keys = okWidget?.value
-                ? okWidget.value.split(",").filter(k => k.trim())
-                : [];
-            const types = otWidget?.value
-                ? otWidget.value.split(",")
-                : [];
+            // Primary source: read output names from serialized node info.
+            // Hidden widget values may not survive ComfyUI's serialization,
+            // but info.outputs always contains the correct saved output names.
+            let keys = [];
+            let types = [];
+            const savedOutputs = info.outputs || [];
+            for (let i = 0; i < savedOutputs.length; i++) {
+                if (/^output_\d+$/.test(savedOutputs[i].name)) continue;
+                keys.push(savedOutputs[i].name);
+                types.push(savedOutputs[i].type || "*");
+            }
+
+            // Fallback: try hidden widget values
+            if (keys.length === 0) {
+                const wKeys = okWidget?.value
+                    ? okWidget.value.split(",").filter(k => k.trim())
+                    : [];
+                if (wKeys.length > 0) {
+                    keys = wKeys;
+                    types = otWidget?.value
+                        ? otWidget.value.split(",")
+                        : [];
+                }
+            }
+
+            // Update hidden widgets so the Python backend has keys for execution
+            if (keys.length > 0) {
+                if (okWidget) okWidget.value = keys.join(",");
+                if (otWidget) otWidget.value = types.join(",");
+            }
 
             if (keys.length > 0) {
-                // On load, LiteGraph already restored serialized outputs with links.
-                // Rename and set types to match stored state (preserves links).
                 for (let i = 0; i < this.outputs.length && i < keys.length; i++) {
                     this.outputs[i].name = keys[i].trim();
                     if (types[i]) this.outputs[i].type = types[i];
                 }
-
-                // Remove any extra outputs beyond the key count
                 while (this.outputs.length > keys.length) {
                     this.removeOutput(this.outputs.length - 1);
                 }
             } else if (this.outputs.length > 0) {
-                // Widget values empty but serialized outputs exist — sync widgets
-                // from the outputs LiteGraph already restored (fallback).
-                if (okWidget) okWidget.value = this.outputs.map(o => o.name).join(",");
-                if (otWidget) otWidget.value = this.outputs.map(o => o.type).join(",");
+                const realOutputs = this.outputs.filter(
+                    o => !/^output_\d+$/.test(o.name)
+                );
+                if (realOutputs.length > 0) {
+                    if (okWidget) okWidget.value = realOutputs.map(o => o.name).join(",");
+                    if (otWidget) otWidget.value = realOutputs.map(o => o.type).join(",");
+                }
             }
 
             this.setSize(this.computeSize());
