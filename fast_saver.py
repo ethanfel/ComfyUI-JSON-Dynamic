@@ -102,6 +102,44 @@ def _get_ffmpeg():
     print(f"xx- FastSaver: ffmpeg downloaded to {local_bin}")
     return local_bin
 
+_COLOR_MGMT = [
+    "-vf", "scale=out_color_matrix=bt709",
+    "-color_range", "tv", "-colorspace", "bt709",
+    "-color_primaries", "bt709", "-color_trc", "bt709",
+]
+
+VIDEO_FORMATS = {
+    "mp4":           {"ext": ".mp4",  "codec": ["-c:v", "libx264"],
+                      "quality": "crf", "color_mgmt": True,
+                      "extra": ["-movflags", "+faststart"]},
+    "h265-mp4":      {"ext": ".mp4",  "codec": ["-c:v", "libx265", "-vtag", "hvc1",
+                       "-preset", "medium", "-x265-params", "log-level=quiet"],
+                      "quality": "crf", "color_mgmt": True,
+                      "extra": ["-movflags", "+faststart"]},
+    "av1-mp4":       {"ext": ".mp4",  "codec": ["-c:v", "libsvtav1"],
+                      "quality": "crf", "color_mgmt": True,
+                      "extra": ["-movflags", "+faststart"]},
+    "webm":          {"ext": ".webm", "codec": ["-c:v", "libvpx-vp9"],
+                      "quality": "crf", "zero_bitrate": True, "color_mgmt": True},
+    "gif":           {"ext": ".gif",  "special": "gif"},
+    "ffv1-mkv":      {"ext": ".mkv",  "codec": ["-c:v", "ffv1", "-level", "3",
+                       "-coder", "1", "-context", "1", "-g", "1",
+                       "-slices", "16", "-slicecrc", "1"],
+                      "quality": "lossless", "pix_fmt": "yuv444p"},
+    "prores-mov":    {"ext": ".mov",  "codec": ["-c:v", "prores_ks"],
+                      "quality": "profile", "color_mgmt": True},
+    "nvenc_h264-mp4":{"ext": ".mp4",  "codec": ["-c:v", "h264_nvenc"],
+                      "quality": "bitrate", "color_mgmt": True,
+                      "extra": ["-movflags", "+faststart"]},
+    "nvenc_hevc-mp4":{"ext": ".mp4",  "codec": ["-c:v", "hevc_nvenc", "-vtag", "hvc1"],
+                      "quality": "bitrate", "color_mgmt": True,
+                      "extra": ["-movflags", "+faststart"]},
+    "nvenc_av1-mp4": {"ext": ".mp4",  "codec": ["-c:v", "av1_nvenc"],
+                      "quality": "bitrate", "color_mgmt": True,
+                      "extra": ["-movflags", "+faststart"]},
+}
+
+
 class FastAbsoluteSaver:
     @classmethod
     def INPUT_TYPES(s):
@@ -112,7 +150,8 @@ class FastAbsoluteSaver:
                 "filename_prefix": ("STRING", {"default": "frame"}),
 
                 # --- FORMAT SWITCH ---
-                "save_format": (["png", "webp", "mp4", "webm"], ),
+                "save_format": (["png", "webp", "mp4", "webm", "h265-mp4", "av1-mp4", "gif",
+                                 "ffv1-mkv", "prores-mov", "nvenc_h264-mp4", "nvenc_hevc-mp4", "nvenc_av1-mp4"], ),
 
                 # --- NAMING CONTROL ---
                 "use_timestamp": ("BOOLEAN", {"default": False, "label": "Add Timestamp (Unique)"}),
@@ -136,7 +175,10 @@ class FastAbsoluteSaver:
                 # --- VIDEO SPECIFIC ---
                 "video_fps": ("INT", {"default": 24, "min": 1, "max": 120, "step": 1, "label": "Video FPS"}),
                 "video_crf": ("INT", {"default": 18, "min": 0, "max": 51, "step": 1, "label": "Video CRF (0=Lossless, 51=Worst)"}),
-                "video_pixel_format": (["yuv420p", "yuv444p"], {"label": "Pixel Format"}),
+                "video_pixel_format": (["yuv420p", "yuv444p", "yuv420p10le"], {"label": "Pixel Format"}),
+                "video_bitrate": ("INT", {"default": 10, "min": 1, "max": 999, "step": 1, "label": "Video Bitrate (Mbps, NVENC)"}),
+                "prores_profile": (["lt", "standard", "hq", "4444", "4444xq"], {"label": "ProRes Profile"}),
+                "gif_dither": (["sierra2_4a", "floyd_steinberg", "bayer", "sierra2", "sierra3", "burkes", "atkinson", "heckbert", "none"], {"label": "GIF Dither Algorithm"}),
             },
             "optional": {
                 "scores_info": ("STRING", {"forceInput": True}),
@@ -237,11 +279,13 @@ class FastAbsoluteSaver:
 
     def save_video(self, frames_np, output_path, filename_prefix, use_timestamp, fps, crf, pixel_format, video_format,
                    auto_increment=False, counter_digits=4,
-                   scores_list=None, metadata_key="sharpness_score", save_workflow=False, prompt_data=None, extra_data=None):
+                   scores_list=None, metadata_key="sharpness_score", save_workflow=False, prompt_data=None, extra_data=None,
+                   bitrate=10, prores_profile="hq", gif_dither="sierra2_4a"):
         """Save image batch as a video file using ffmpeg. frames_np is a list/array of uint8 numpy arrays."""
         ffmpeg_path = _get_ffmpeg()
+        fmt = VIDEO_FORMATS[video_format]
 
-        ext = ".mp4" if video_format == "mp4" else ".webm"
+        ext = fmt["ext"]
         if use_timestamp:
             ts_str = f"_{int(time.time())}"
             out_file = os.path.join(output_path, f"{filename_prefix}{ts_str}{ext}")
@@ -254,6 +298,34 @@ class FastAbsoluteSaver:
 
         batch_size = len(frames_np)
         h, w = frames_np[0].shape[0], frames_np[0].shape[1]
+
+        # --- GIF SPECIAL CASE ---
+        if fmt.get("special") == "gif":
+            filter_str = (
+                "[0:v] split [a][b]; [a] palettegen=reserve_transparent=on"
+                ":transparency_color=ffffff [p]; [b][p] paletteuse=dither=" + gif_dither
+            )
+            cmd = [ffmpeg_path, "-y", "-f", "rawvideo", "-pix_fmt", "rgb24",
+                   "-s", f"{w}x{h}", "-r", str(fps), "-i", "-",
+                   "-filter_complex", filter_str, out_file]
+
+            print(f"xx- FastSaver: Encoding {batch_size} frames to {out_file} (gif, {fps}fps)...")
+
+            proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+            try:
+                for frame in frames_np:
+                    proc.stdin.write(frame.tobytes())
+                proc.stdin.close()
+            except BrokenPipeError:
+                pass
+            stderr = proc.stderr.read()
+            proc.wait()
+
+            if proc.returncode != 0:
+                raise RuntimeError(f"ffmpeg failed: {stderr.decode()}")
+
+            print(f"xx- FastSaver: Video saved to {out_file}")
+            return out_file
 
         # --- BUILD METADATA FILE (avoids arg-too-long for large workflows) ---
         meta_lines = [";FFMETADATA1"]
@@ -280,33 +352,56 @@ class FastAbsoluteSaver:
         self._meta_tmpfile.close()
         meta_file = self._meta_tmpfile.name
 
-        if video_format == "mp4":
-            codec = "libx264"
-            cmd = [
-                ffmpeg_path, "-y",
-                "-f", "rawvideo", "-pix_fmt", "rgb24",
-                "-s", f"{w}x{h}", "-r", str(fps),
-                "-i", "-",
-                "-i", meta_file, "-map_metadata", "1",
-                "-c:v", codec, "-crf", str(crf),
-                "-pix_fmt", pixel_format,
-                "-movflags", "+faststart",
-                out_file
-            ]
-        else:  # webm
-            codec = "libvpx-vp9"
-            cmd = [
-                ffmpeg_path, "-y",
-                "-f", "rawvideo", "-pix_fmt", "rgb24",
-                "-s", f"{w}x{h}", "-r", str(fps),
-                "-i", "-",
-                "-i", meta_file, "-map_metadata", "1",
-                "-c:v", codec, "-crf", str(crf), "-b:v", "0",
-                "-pix_fmt", pixel_format,
-                out_file
-            ]
+        # --- BUILD FFMPEG COMMAND ---
+        cmd = [ffmpeg_path, "-y",
+               "-f", "rawvideo", "-pix_fmt", "rgb24",
+               "-s", f"{w}x{h}", "-r", str(fps), "-i", "-",
+               "-i", meta_file, "-map_metadata", "1"]
 
-        print(f"xx- FastSaver: Encoding {batch_size} frames to {out_file} ({codec}, crf={crf}, {fps}fps)...")
+        # Codec args
+        cmd.extend(fmt["codec"])
+
+        # Quality control
+        quality_mode = fmt.get("quality", "crf")
+        if quality_mode == "crf":
+            cmd.extend(["-crf", str(crf)])
+            if fmt.get("zero_bitrate"):
+                cmd.extend(["-b:v", "0"])
+        elif quality_mode == "bitrate":
+            cmd.extend(["-b:v", f"{bitrate}M"])
+        elif quality_mode == "profile":
+            # ffmpeg's prores_ks accepts "xq" not "4444xq"
+            ffmpeg_profile = "xq" if prores_profile == "4444xq" else prores_profile
+            cmd.extend(["-profile:v", ffmpeg_profile])
+
+        # Pixel format
+        if "pix_fmt" in fmt:
+            cmd.extend(["-pix_fmt", fmt["pix_fmt"]])
+        elif quality_mode == "profile":
+            # ProRes auto pixel format based on profile
+            if prores_profile in ("4444", "4444xq"):
+                cmd.extend(["-pix_fmt", "yuv444p10le"])
+            else:
+                cmd.extend(["-pix_fmt", "yuv422p10le"])
+        else:
+            # NVENC doesn't support yuv420p10le — remap to p010le
+            pf = pixel_format
+            if "nvenc" in video_format and pf == "yuv420p10le":
+                pf = "p010le"
+            cmd.extend(["-pix_fmt", pf])
+
+        # Color management
+        if fmt.get("color_mgmt"):
+            cmd.extend(_COLOR_MGMT)
+
+        # Extra args (e.g. -movflags +faststart)
+        if "extra" in fmt:
+            cmd.extend(fmt["extra"])
+
+        cmd.append(out_file)
+
+        codec_label = fmt["codec"][fmt["codec"].index("-c:v") + 1] if "-c:v" in fmt["codec"] else video_format
+        print(f"xx- FastSaver: Encoding {batch_size} frames to {out_file} ({codec_label}, {fps}fps)...")
 
         proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
@@ -334,6 +429,7 @@ class FastAbsoluteSaver:
                          max_threads, filename_with_score, metadata_key, save_workflow_metadata, save_metadata_png,
                          webp_lossless, webp_quality, webp_method,
                          video_fps, video_crf, video_pixel_format,
+                         video_bitrate, prores_profile, gif_dither,
                          scores_info=None, prompt=None, extra_pnginfo=None):
 
         output_path = output_path.strip('"')
@@ -351,14 +447,16 @@ class FastAbsoluteSaver:
         batch_size = len(images_np)
 
         # --- VIDEO PATH (check early, before image-specific logic) ---
-        if save_format in ("mp4", "webm"):
+        if save_format in VIDEO_FORMATS:
             _, scores_list = self.parse_info(scores_info, batch_size)
             out_file = self.save_video(images_np, output_path, filename_prefix, use_timestamp,
                             video_fps, video_crf, video_pixel_format, save_format,
                             auto_increment=auto_increment, counter_digits=counter_digits,
                             scores_list=scores_list, metadata_key=metadata_key,
                             save_workflow=save_workflow_metadata, prompt_data=prompt,
-                            extra_data=extra_pnginfo)
+                            extra_data=extra_pnginfo,
+                            bitrate=video_bitrate, prores_profile=prores_profile,
+                            gif_dither=gif_dither)
             # Save metadata sidecar PNG next to the video file
             if save_metadata_png:
                 png_path = os.path.splitext(out_file)[0] + ".png"
