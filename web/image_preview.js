@@ -53,6 +53,34 @@ app.registerExtension({
                 app.graph.setDirtyCanvas(true, true);
             });
 
+            this.addWidget("text", "channel", "default", () => {});
+
+            this.addWidget("button", "Send to Channel", null, () => {
+                const channelWidget = this.widgets?.find(w => w.name === "channel");
+                const channel = channelWidget?.value || "default";
+
+                const filename = this.last_input_filename;
+                if (!filename) {
+                    console.warn("[PreviewToLoad] No filename available. Run the workflow first.");
+                    return;
+                }
+
+                fetch("/jdl/channel/send", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ channel, filename }),
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.ok) {
+                        console.log(`[PreviewToLoad] Sent "${filename}" to channel "${channel}"`);
+                    } else {
+                        console.warn("[PreviewToLoad] Channel send failed:", data.error);
+                    }
+                })
+                .catch(err => console.error("[PreviewToLoad] Channel send error:", err));
+            });
+
             this.setSize(this.computeSize());
         };
 
