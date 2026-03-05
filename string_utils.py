@@ -155,11 +155,36 @@ class JDL_StringSwitch:
             return (on_false if on_false is not None else default_false,)
 
 
+class JDL_DependencyPassthrough:
+    """Passes data through unchanged. Set 'order' in the JS widget to auto-wire
+    execution order between passthrough nodes (1 → 2 → 3 → 4)."""
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "data": (any_type,),
+            },
+            "optional": {
+                "wait_for": (any_type,),
+            },
+        }
+
+    RETURN_TYPES = (any_type,)
+    RETURN_NAMES = ("data",)
+    FUNCTION = "passthrough"
+    CATEGORY = "utils/flow"
+
+    def passthrough(self, data, wait_for=None):
+        return (data,)
+
+
 NODE_CLASS_MAPPINGS = {
     "JDL_PathJoin": JDL_PathJoin,
     "JDL_StringFormat": JDL_StringFormat,
     "JDL_StringExtract": JDL_StringExtract,
     "JDL_StringSwitch": JDL_StringSwitch,
+    "JDL_DependencyPassthrough": JDL_DependencyPassthrough,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -167,4 +192,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "JDL_StringFormat": "String Format",
     "JDL_StringExtract": "String Extract",
     "JDL_StringSwitch": "String Switch",
+    "JDL_DependencyPassthrough": "Ordered Passthrough",
 }
