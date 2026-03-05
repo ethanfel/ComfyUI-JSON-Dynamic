@@ -236,13 +236,21 @@ class FastAbsoluteSaver:
             return False
 
     def save_video(self, frames_np, output_path, filename_prefix, use_timestamp, fps, crf, pixel_format, video_format,
+                   auto_increment=False, counter_digits=4,
                    scores_list=None, metadata_key="sharpness_score", save_workflow=False, prompt_data=None, extra_data=None):
         """Save image batch as a video file using ffmpeg. frames_np is a list/array of uint8 numpy arrays."""
         ffmpeg_path = _get_ffmpeg()
 
-        ts_str = f"_{int(time.time())}" if use_timestamp else ""
         ext = ".mp4" if video_format == "mp4" else ".webm"
-        out_file = os.path.join(output_path, f"{filename_prefix}{ts_str}{ext}")
+        if use_timestamp:
+            ts_str = f"_{int(time.time())}"
+            out_file = os.path.join(output_path, f"{filename_prefix}{ts_str}{ext}")
+        elif auto_increment:
+            start_idx = self.get_start_index(output_path, filename_prefix)
+            fmt_str = f"{{:0{counter_digits}d}}"
+            out_file = os.path.join(output_path, f"{filename_prefix}_{fmt_str.format(start_idx)}{ext}")
+        else:
+            out_file = os.path.join(output_path, f"{filename_prefix}{ext}")
 
         batch_size = len(frames_np)
         h, w = frames_np[0].shape[0], frames_np[0].shape[1]
@@ -347,6 +355,7 @@ class FastAbsoluteSaver:
             _, scores_list = self.parse_info(scores_info, batch_size)
             out_file = self.save_video(images_np, output_path, filename_prefix, use_timestamp,
                             video_fps, video_crf, video_pixel_format, save_format,
+                            auto_increment=auto_increment, counter_digits=counter_digits,
                             scores_list=scores_list, metadata_key=metadata_key,
                             save_workflow=save_workflow_metadata, prompt_data=prompt,
                             extra_data=extra_pnginfo)
