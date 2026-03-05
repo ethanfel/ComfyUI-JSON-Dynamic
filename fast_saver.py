@@ -125,7 +125,7 @@ VIDEO_FORMATS = {
     "ffv1-mkv":      {"ext": ".mkv",  "codec": ["-c:v", "ffv1", "-level", "3",
                        "-coder", "1", "-context", "1", "-g", "1",
                        "-slices", "16", "-slicecrc", "1"],
-                      "quality": "lossless", "pix_fmt": "yuv444p"},
+                      "quality": "lossless"},
     "prores-mov":    {"ext": ".mov",  "codec": ["-c:v", "prores_ks"],
                       "quality": "profile", "color_mgmt": True},
     "nvenc_h264-mp4":{"ext": ".mp4",  "codec": ["-c:v", "h264_nvenc"],
@@ -175,7 +175,7 @@ class FastAbsoluteSaver:
                 # --- VIDEO SPECIFIC ---
                 "video_fps": ("INT", {"default": 24, "min": 1, "max": 120, "step": 1, "label": "Video FPS"}),
                 "video_crf": ("INT", {"default": 18, "min": 0, "max": 51, "step": 1, "label": "Video CRF (0=Lossless, 51=Worst)"}),
-                "video_pixel_format": (["yuv420p", "yuv444p", "yuv420p10le"], {"label": "Pixel Format"}),
+                "video_pixel_format": (["yuv420p", "yuv422p", "yuv444p", "yuv420p10le", "rgb24", "bgra"], {"label": "Pixel Format"}),
                 "video_bitrate": ("INT", {"default": 10, "min": 1, "max": 999, "step": 1, "label": "Video Bitrate (Mbps, NVENC)"}),
                 "prores_profile": (["lt", "standard", "hq", "4444", "4444xq"], {"label": "ProRes Profile"}),
                 "gif_dither": (["sierra2_4a", "floyd_steinberg", "bayer", "sierra2", "sierra3", "burkes", "atkinson", "heckbert", "none"], {"label": "GIF Dither Algorithm"}),
