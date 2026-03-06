@@ -73,7 +73,9 @@ function updateVisibility(node) {
         }
     }
 
-    node.setSize(node.computeSize());
+    const sz = node.computeSize();
+    sz[1] += 10;
+    node.setSize(sz);
     app.graph?.setDirtyCanvas(true, true);
 }
 
