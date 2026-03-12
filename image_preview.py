@@ -93,7 +93,7 @@ class JDL_PreviewToLoad:
     RETURN_TYPES = ()
     FUNCTION = "preview_and_save"
     OUTPUT_NODE = True
-    CATEGORY = "utils/image"
+    CATEGORY = "JSON Dynamic/image"
 
     def preview_and_save(self, images, filename="preview", mask=None, prompt=None, extra_pnginfo=None):
         # Save to temp/ for preview (same as PreviewImage)
@@ -234,7 +234,7 @@ class JDL_LoadImage:
 
     RETURN_TYPES = ("IMAGE", "MASK")
     FUNCTION = "load_image"
-    CATEGORY = "utils/image"
+    CATEGORY = "JSON Dynamic/image"
 
     def load_image(self, image, active):
         if not active:
@@ -277,7 +277,7 @@ class JDL_ImageReceiver:
     RETURN_TYPES = ("IMAGE", "MASK", "STRING")
     RETURN_NAMES = ("image", "mask", "filename")
     FUNCTION = "receive"
-    CATEGORY = "utils/image"
+    CATEGORY = "JSON Dynamic/image"
 
     def receive(self, channel, active):
         if not active:

@@ -30,7 +30,7 @@ class JDL_PathJoin:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("path",)
     FUNCTION = "join_path"
-    CATEGORY = "utils/path"
+    CATEGORY = "JSON Dynamic/string"
 
     def join_path(self, segment_1, segment_2="", segment_3="", segment_4="",
                   segment_5="", segment_6=""):
@@ -59,7 +59,7 @@ class JDL_StringFormat:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("string",)
     FUNCTION = "format_string"
-    CATEGORY = "utils/string"
+    CATEGORY = "JSON Dynamic/string"
 
     def format_string(self, template, **kwargs):
         values = []
@@ -92,7 +92,7 @@ class JDL_StringExtract:
     RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING")
     RETURN_NAMES = ("result", "dirname", "basename", "extension")
     FUNCTION = "extract"
-    CATEGORY = "utils/string"
+    CATEGORY = "JSON Dynamic/string"
 
     def extract(self, text, mode, delimiter="/", index=-1, delimiter_2=""):
         dirname = os.path.dirname(text)
@@ -145,7 +145,7 @@ class JDL_StringSwitch:
     RETURN_TYPES = (any_type,)
     RETURN_NAMES = ("result",)
     FUNCTION = "switch"
-    CATEGORY = "utils/string"
+    CATEGORY = "JSON Dynamic/string"
 
     def switch(self, condition, on_true=None, on_false=None,
                default_true="", default_false=""):
@@ -173,7 +173,7 @@ class JDL_DependencyPassthrough:
     RETURN_TYPES = (any_type,)
     RETURN_NAMES = ("data",)
     FUNCTION = "passthrough"
-    CATEGORY = "utils/flow"
+    CATEGORY = "JSON Dynamic/flow"
 
     def passthrough(self, data, wait_for=None):
         return (data,)

@@ -98,7 +98,7 @@ class JSONDynamicLoader:
     RETURN_TYPES = tuple(any_type for _ in range(MAX_DYNAMIC_OUTPUTS))
     RETURN_NAMES = tuple(f"output_{i}" for i in range(MAX_DYNAMIC_OUTPUTS))
     FUNCTION = "load_dynamic"
-    CATEGORY = "utils/json"
+    CATEGORY = "JSON Dynamic/json"
     OUTPUT_NODE = False
 
     def load_dynamic(self, json_path, sequence_number, output_keys="", output_types=""):

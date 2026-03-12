@@ -190,7 +190,7 @@ class FastAbsoluteSaver:
     RETURN_TYPES = ()
     FUNCTION = "save_images_fast"
     OUTPUT_NODE = True
-    CATEGORY = "utils/io"
+    CATEGORY = "JSON Dynamic/io"
 
     def parse_info(self, info_str, batch_size):
         if not info_str:
@@ -433,6 +433,9 @@ class FastAbsoluteSaver:
                          scores_info=None, prompt=None, extra_pnginfo=None):
 
         output_path = output_path.strip('"')
+        if not os.path.isabs(output_path):
+            import folder_paths
+            output_path = os.path.join(folder_paths.base_path, output_path)
         if not os.path.exists(output_path):
             try:
                 os.makedirs(output_path, exist_ok=True)
