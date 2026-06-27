@@ -16,6 +16,7 @@ import tempfile
 import urllib.request
 import zipfile
 import tarfile
+import wave
 
 _NODE_DIR = os.path.dirname(os.path.abspath(__file__))
 _FFMPEG_DIR = os.path.join(_NODE_DIR, "ffmpeg_bin")
@@ -110,32 +111,33 @@ _COLOR_MGMT = [
 
 VIDEO_FORMATS = {
     "mp4":           {"ext": ".mp4",  "codec": ["-c:v", "libx264"],
-                      "quality": "crf", "color_mgmt": True,
+                      "quality": "crf", "color_mgmt": True, "acodec": "aac",
                       "extra": ["-movflags", "+faststart"]},
     "h265-mp4":      {"ext": ".mp4",  "codec": ["-c:v", "libx265", "-vtag", "hvc1",
                        "-preset", "medium", "-x265-params", "log-level=quiet"],
-                      "quality": "crf", "color_mgmt": True,
+                      "quality": "crf", "color_mgmt": True, "acodec": "aac",
                       "extra": ["-movflags", "+faststart"]},
     "av1-mp4":       {"ext": ".mp4",  "codec": ["-c:v", "libsvtav1"],
-                      "quality": "crf", "color_mgmt": True,
+                      "quality": "crf", "color_mgmt": True, "acodec": "aac",
                       "extra": ["-movflags", "+faststart"]},
     "webm":          {"ext": ".webm", "codec": ["-c:v", "libvpx-vp9"],
-                      "quality": "crf", "zero_bitrate": True, "color_mgmt": True},
+                      "quality": "crf", "zero_bitrate": True, "color_mgmt": True,
+                      "acodec": "libopus"},
     "gif":           {"ext": ".gif",  "special": "gif"},
     "ffv1-mkv":      {"ext": ".mkv",  "codec": ["-c:v", "ffv1", "-level", "3",
                        "-coder", "1", "-context", "1", "-g", "1",
                        "-slices", "16", "-slicecrc", "1"],
-                      "quality": "lossless"},
+                      "quality": "lossless", "acodec": "flac"},
     "prores-mov":    {"ext": ".mov",  "codec": ["-c:v", "prores_ks"],
-                      "quality": "profile", "color_mgmt": True},
+                      "quality": "profile", "color_mgmt": True, "acodec": "pcm_s16le"},
     "nvenc_h264-mp4":{"ext": ".mp4",  "codec": ["-c:v", "h264_nvenc"],
-                      "quality": "bitrate", "color_mgmt": True,
+                      "quality": "bitrate", "color_mgmt": True, "acodec": "aac",
                       "extra": ["-movflags", "+faststart"]},
     "nvenc_hevc-mp4":{"ext": ".mp4",  "codec": ["-c:v", "hevc_nvenc", "-vtag", "hvc1"],
-                      "quality": "bitrate", "color_mgmt": True,
+                      "quality": "bitrate", "color_mgmt": True, "acodec": "aac",
                       "extra": ["-movflags", "+faststart"]},
     "nvenc_av1-mp4": {"ext": ".mp4",  "codec": ["-c:v", "av1_nvenc"],
-                      "quality": "bitrate", "color_mgmt": True,
+                      "quality": "bitrate", "color_mgmt": True, "acodec": "aac",
                       "extra": ["-movflags", "+faststart"]},
 }
 
@@ -182,6 +184,7 @@ class FastAbsoluteSaver:
             },
             "optional": {
                 "scores_info": ("STRING", {"forceInput": True}),
+                "audio": ("AUDIO", ),
             },
             # Hidden inputs used to capture the workflow graph
             "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
@@ -277,10 +280,47 @@ class FastAbsoluteSaver:
             print(f"xx- Error saving {full_path}: {e}")
             return False
 
+    def _write_temp_wav(self, audio):
+        """Write a ComfyUI AUDIO dict ({waveform, sample_rate}) to a temp WAV file.
+        waveform is a tensor of shape [batch, channels, samples] in float [-1, 1].
+        Returns the file path, or None if no usable audio is present."""
+        try:
+            waveform = audio.get("waveform")
+            sample_rate = int(audio.get("sample_rate", 0))
+            if waveform is None or sample_rate <= 0:
+                return None
+
+            # Take the first item in the batch -> [channels, samples]
+            wf = waveform[0]
+            if hasattr(wf, "cpu"):
+                wf = wf.cpu().numpy()
+            wf = np.asarray(wf, dtype=np.float32)
+            if wf.ndim == 1:
+                wf = wf[np.newaxis, :]
+            channels = wf.shape[0]
+            if channels == 0 or wf.shape[1] == 0:
+                return None
+
+            # Interleave channels: [channels, samples] -> [samples, channels]
+            interleaved = np.clip(wf.T, -1.0, 1.0)
+            pcm = (interleaved * 32767.0).astype(np.int16)
+
+            tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+            tmp.close()
+            with wave.open(tmp.name, "wb") as w:
+                w.setnchannels(channels)
+                w.setsampwidth(2)
+                w.setframerate(sample_rate)
+                w.writeframes(pcm.tobytes())
+            return tmp.name
+        except Exception as e:
+            print(f"xx- FastSaver: Could not prepare audio, skipping: {e}")
+            return None
+
     def save_video(self, frames_np, output_path, filename_prefix, use_timestamp, fps, crf, pixel_format, video_format,
                    auto_increment=False, counter_digits=4,
                    scores_list=None, metadata_key="sharpness_score", save_workflow=False, prompt_data=None, extra_data=None,
-                   bitrate=10, prores_profile="hq", gif_dither="sierra2_4a"):
+                   bitrate=10, prores_profile="hq", gif_dither="sierra2_4a", audio=None):
         """Save image batch as a video file using ffmpeg. frames_np is a list/array of uint8 numpy arrays."""
         ffmpeg_path = _get_ffmpeg()
         fmt = VIDEO_FORMATS[video_format]
@@ -301,6 +341,8 @@ class FastAbsoluteSaver:
 
         # --- GIF SPECIAL CASE ---
         if fmt.get("special") == "gif":
+            if audio is not None:
+                print("xx- FastSaver: GIF format cannot carry audio, ignoring audio input.")
             filter_str = (
                 "[0:v] split [a][b]; [a] palettegen=reserve_transparent=on"
                 ":transparency_color=ffffff [p]; [b][p] paletteuse=dither=" + gif_dither
@@ -352,11 +394,18 @@ class FastAbsoluteSaver:
         self._meta_tmpfile.close()
         meta_file = self._meta_tmpfile.name
 
+        # --- AUDIO (optional) ---
+        audio_file = self._write_temp_wav(audio) if audio is not None else None
+
         # --- BUILD FFMPEG COMMAND ---
+        # Input order: 0=rawvideo (stdin), 1=metadata, 2=audio (if present)
         cmd = [ffmpeg_path, "-y",
                "-f", "rawvideo", "-pix_fmt", "rgb24",
                "-s", f"{w}x{h}", "-r", str(fps), "-i", "-",
-               "-i", meta_file, "-map_metadata", "1"]
+               "-i", meta_file]
+        if audio_file:
+            cmd.extend(["-i", audio_file])
+        cmd.extend(["-map_metadata", "1"])
 
         # Codec args
         cmd.extend(fmt["codec"])
@@ -398,6 +447,11 @@ class FastAbsoluteSaver:
         if "extra" in fmt:
             cmd.extend(fmt["extra"])
 
+        # Audio: map the video stream explicitly and mux in the audio track
+        if audio_file:
+            acodec = fmt.get("acodec", "aac")
+            cmd.extend(["-map", "0:v:0", "-map", "2:a:0", "-c:a", acodec, "-shortest"])
+
         cmd.append(out_file)
 
         codec_label = fmt["codec"][fmt["codec"].index("-c:v") + 1] if "-c:v" in fmt["codec"] else video_format
@@ -413,11 +467,16 @@ class FastAbsoluteSaver:
         stderr = proc.stderr.read()
         proc.wait()
 
-        # Clean up metadata temp file
+        # Clean up temp files
         try:
             os.remove(meta_file)
         except OSError:
             pass
+        if audio_file:
+            try:
+                os.remove(audio_file)
+            except OSError:
+                pass
 
         if proc.returncode != 0:
             raise RuntimeError(f"ffmpeg failed: {stderr.decode()}")
@@ -430,7 +489,7 @@ class FastAbsoluteSaver:
                          webp_lossless, webp_quality, webp_method,
                          video_fps, video_crf, video_pixel_format,
                          video_bitrate, prores_profile, gif_dither,
-                         scores_info=None, prompt=None, extra_pnginfo=None):
+                         scores_info=None, audio=None, prompt=None, extra_pnginfo=None):
 
         output_path = output_path.strip('"')
         if not os.path.isabs(output_path):
@@ -459,7 +518,7 @@ class FastAbsoluteSaver:
                             save_workflow=save_workflow_metadata, prompt_data=prompt,
                             extra_data=extra_pnginfo,
                             bitrate=video_bitrate, prores_profile=prores_profile,
-                            gif_dither=gif_dither)
+                            gif_dither=gif_dither, audio=audio)
             # Save metadata sidecar PNG next to the video file
             if save_metadata_png:
                 png_path = os.path.splitext(out_file)[0] + ".png"
