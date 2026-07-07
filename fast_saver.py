@@ -142,6 +142,17 @@ VIDEO_FORMATS = {
 }
 
 
+def _latent_sidecar_path(media_path):
+    return os.path.splitext(media_path)[0] + ".latent"
+
+
+def _load_latent_file(latent_path):
+    try:
+        return torch.load(latent_path, map_location="cpu", weights_only=False)
+    except TypeError:
+        return torch.load(latent_path, map_location="cpu")
+
+
 class FastAbsoluteSaver:
     @classmethod
     def INPUT_TYPES(s):
@@ -185,6 +196,7 @@ class FastAbsoluteSaver:
             "optional": {
                 "scores_info": ("STRING", {"forceInput": True}),
                 "audio": ("AUDIO", ),
+                "latent": ("LATENT", ),
             },
             # Hidden inputs used to capture the workflow graph
             "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
@@ -247,6 +259,12 @@ class FastAbsoluteSaver:
         meta.add_text("prompt", prompt_json)
         meta.add_text("workflow", workflow_json)
         img.save(png_path, format="PNG", pnginfo=meta, compress_level=1)
+
+    def _save_latent_sidecar(self, latent, media_path):
+        latent_path = _latent_sidecar_path(media_path)
+        torch.save(latent, latent_path)
+        print(f"xx- FastSaver: Latent sidecar saved to {latent_path}")
+        return latent_path
 
     def save_single_image(self, img_array, full_path, score, key_name, fmt, lossless, quality, method,
                           save_workflow, prompt_data, extra_data, force_png_metadata=False):
@@ -489,7 +507,7 @@ class FastAbsoluteSaver:
                          webp_lossless, webp_quality, webp_method,
                          video_fps, video_crf, video_pixel_format,
                          video_bitrate, prores_profile, gif_dither,
-                         scores_info=None, audio=None, prompt=None, extra_pnginfo=None):
+                         scores_info=None, audio=None, latent=None, prompt=None, extra_pnginfo=None):
 
         output_path = output_path.strip('"')
         if not os.path.isabs(output_path):
@@ -519,6 +537,8 @@ class FastAbsoluteSaver:
                             extra_data=extra_pnginfo,
                             bitrate=video_bitrate, prores_profile=prores_profile,
                             gif_dither=gif_dither, audio=audio)
+            if latent is not None:
+                self._save_latent_sidecar(latent, out_file)
             # Save metadata sidecar PNG next to the video file
             if save_metadata_png:
                 png_path = os.path.splitext(out_file)[0] + ".png"
@@ -545,6 +565,7 @@ class FastAbsoluteSaver:
         print(f"xx- FastSaver: Saving {batch_size} images to {output_path}...")
 
         first_image_path = None
+        saved_image_paths = []
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
             futures = []
@@ -575,15 +596,24 @@ class FastAbsoluteSaver:
                 # For PNG sequences: embed workflow metadata in the first file only
                 force_meta = (save_metadata_png and save_format == "png" and i == 0)
 
-                futures.append(executor.submit(
+                future = executor.submit(
                     self.save_single_image,
                     img_array, full_path, current_score, metadata_key,
                     save_format, webp_lossless, webp_quality, webp_method,
                     save_workflow_metadata, prompt, extra_pnginfo,
                     force_png_metadata=force_meta
-                ))
+                )
+                futures.append((full_path, future))
 
-            concurrent.futures.wait(futures)
+            concurrent.futures.wait([future for _, future in futures])
+
+            for full_path, future in futures:
+                if future.result():
+                    saved_image_paths.append(full_path)
+
+        if latent is not None:
+            for image_path in saved_image_paths:
+                self._save_latent_sidecar(latent, image_path)
 
         # Save a single metadata sidecar PNG using the first image (skip for PNG sequences - handled above)
         if save_metadata_png and save_format != "png" and first_image_path is not None:
@@ -596,10 +626,56 @@ class FastAbsoluteSaver:
         return {"ui": {"images": []}}
 
 
+class JDL_LoadLatentAbsolute:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "path": ("STRING", {"default": "", "multiline": False}),
+            },
+        }
+
+    RETURN_TYPES = ("LATENT",)
+    RETURN_NAMES = ("latent",)
+    FUNCTION = "load_latent"
+    CATEGORY = "JSON Dynamic/io"
+
+    def load_latent(self, path):
+        latent_path = path.strip().strip('"')
+        if not os.path.isabs(latent_path):
+            raise ValueError(f"Load Latent Absolute requires an absolute path: {path}")
+        if not os.path.isfile(latent_path):
+            raise FileNotFoundError(f"Latent file not found: {latent_path}")
+
+        latent = _load_latent_file(latent_path)
+        if not isinstance(latent, dict) or "samples" not in latent:
+            raise ValueError(f"Expected a latent dict with a 'samples' key: {latent_path}")
+        return (latent,)
+
+    @classmethod
+    def IS_CHANGED(s, path):
+        latent_path = path.strip().strip('"')
+        if not os.path.isfile(latent_path):
+            return f"missing:{latent_path}"
+        stat_result = os.stat(latent_path)
+        return f"{latent_path}:{stat_result.st_mtime_ns}:{stat_result.st_size}"
+
+    @classmethod
+    def VALIDATE_INPUTS(s, path):
+        latent_path = path.strip().strip('"')
+        if not os.path.isabs(latent_path):
+            return f"Path must be absolute: {path}"
+        if not os.path.isfile(latent_path):
+            return f"Latent file not found: {latent_path}"
+        return True
+
+
 NODE_CLASS_MAPPINGS = {
     "FastAbsoluteSaver": FastAbsoluteSaver,
+    "JDL_LoadLatentAbsolute": JDL_LoadLatentAbsolute,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "FastAbsoluteSaver": "Fast Absolute Saver (Metadata)",
+    "JDL_LoadLatentAbsolute": "Load Latent Absolute",
 }
