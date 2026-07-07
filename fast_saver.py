@@ -202,7 +202,8 @@ class FastAbsoluteSaver:
             "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
         }
 
-    RETURN_TYPES = ()
+    RETURN_TYPES = ("LATENT",)
+    RETURN_NAMES = ("latent",)
     FUNCTION = "save_images_fast"
     OUTPUT_NODE = True
     CATEGORY = "JSON Dynamic/io"
@@ -546,7 +547,7 @@ class FastAbsoluteSaver:
                 avg_score = (sum(scores_list) / len(scores_list)) if scores_list else None
                 self._save_sidecar_png(img, png_path, avg_score, metadata_key, prompt, extra_pnginfo)
                 print(f"xx- FastSaver: Metadata PNG sidecar saved to {png_path}")
-            return {"ui": {"images": []}}
+            return {"ui": {"images": []}, "result": (latent,)}
 
         if max_threads == 0:
             max_threads = os.cpu_count() or 4
@@ -623,7 +624,7 @@ class FastAbsoluteSaver:
             self._save_sidecar_png(img, png_path, first_score, metadata_key, prompt, extra_pnginfo)
             print(f"xx- FastSaver: Metadata PNG sidecar saved to {png_path}")
 
-        return {"ui": {"images": []}}
+        return {"ui": {"images": []}, "result": (latent,)}
 
 
 class JDL_LoadLatentAbsolute:

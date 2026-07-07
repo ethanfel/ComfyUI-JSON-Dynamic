@@ -45,6 +45,16 @@ def test_png_save_writes_matching_latent_sidecar(tmp_path):
     assert loaded["keep"] == {"value": 7}
 
 
+def test_png_save_returns_latent_passthrough(tmp_path):
+    saver = FastAbsoluteSaver()
+    latent = {"samples": torch.ones((1, 1, 2, 2))}
+
+    result = saver.save_images_fast(**_save_args(tmp_path, latent=latent))
+
+    assert result["result"] == (latent,)
+    assert result["result"][0] is latent
+
+
 def test_video_save_writes_latent_sidecar_next_to_video(tmp_path):
     saver = FastAbsoluteSaver()
     latent = {"samples": torch.arange(8, dtype=torch.float32).reshape(2, 1, 2, 2)}
