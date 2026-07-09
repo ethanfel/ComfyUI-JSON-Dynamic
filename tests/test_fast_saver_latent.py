@@ -131,10 +131,25 @@ def test_get_ffmpeg_prefers_binary_with_required_encoder(monkeypatch):
     monkeypatch.setattr(fs, "_existing_ffmpeg_paths", lambda: ["/static/ffmpeg", "/nvenc/ffmpeg"])
     monkeypatch.setattr(fs, "_ffmpeg_has_encoder",
                         lambda p, e: p == "/nvenc/ffmpeg" and e == "av1_nvenc")
+    # Never hit the network from tests.
+    monkeypatch.setattr(fs, "_download_ffmpeg", lambda: None)
 
     # Required encoder lives in the lower-priority binary -> that one wins.
     assert fs._get_ffmpeg("av1_nvenc") == "/nvenc/ffmpeg"
     # No requirement -> highest-priority existing binary.
     assert fs._get_ffmpeg() == "/static/ffmpeg"
-    # Required encoder available nowhere -> default binary (caller handles fallback).
+    # Required encoder available nowhere and download yields nothing -> default binary.
     assert fs._get_ffmpeg("h264_nvenc") == "/static/ffmpeg"
+
+
+def test_get_ffmpeg_downloads_when_no_existing_binary_has_encoder(monkeypatch):
+    import fast_saver as fs
+
+    monkeypatch.setattr(fs, "_existing_ffmpeg_paths", lambda: ["/static/ffmpeg"])
+    # Only the freshly downloaded binary reports the requested encoder.
+    monkeypatch.setattr(fs, "_ffmpeg_has_encoder", lambda p, e: p == "/downloaded/ffmpeg")
+    calls = []
+    monkeypatch.setattr(fs, "_download_ffmpeg", lambda: (calls.append(1), "/downloaded/ffmpeg")[1])
+
+    assert fs._get_ffmpeg("av1_nvenc") == "/downloaded/ffmpeg"
+    assert calls == [1]

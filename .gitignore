@@ -1,0 +1,8 @@
+# Auto-downloaded ffmpeg binary (~125 MB, provisioned at runtime)
+ffmpeg_bin/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/

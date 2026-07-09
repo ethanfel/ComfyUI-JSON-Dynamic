@@ -62,52 +62,40 @@ def _existing_ffmpeg_paths():
     return paths
 
 
-def _get_ffmpeg(required_encoder=None):
-    """Find or download a ffmpeg binary. Search order:
-    1. Bundled binary in this node's ffmpeg_bin/ folder
-    2. imageio_ffmpeg (shipped by VideoHelperSuite)
-    3. System PATH
-    4. Auto-download a static build into ffmpeg_bin/
+# BtbN static builds are compiled WITH NVENC/CUDA (unlike johnvansickle/gyan),
+# so the node can self-provision a GPU-capable ffmpeg on first use of an nvenc_*
+# format. They're larger (~125 MB) but ship every CPU codec too.
+_FFMPEG_URLS = {
+    ("Linux", "x86_64"):  "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz",
+    ("Linux", "aarch64"): "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz",
+    ("Windows", "AMD64"): "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
+}
 
-    If required_encoder is given (e.g. 'av1_nvenc'), prefer the first existing
-    binary that actually provides it; otherwise return the highest-priority
-    existing binary, downloading a static build only if none exist.
-    """
+_DOWNLOAD_ATTEMPTED = False
+
+
+def _download_ffmpeg():
+    """Download a static, NVENC-enabled ffmpeg (BtbN) into ffmpeg_bin/.
+    Runs at most once per process. Returns the binary path, or None on failure."""
+    global _DOWNLOAD_ATTEMPTED
     system = platform.system()
     exe_name = "ffmpeg.exe" if system == "Windows" else "ffmpeg"
     local_bin = os.path.join(_FFMPEG_DIR, exe_name)
 
-    candidates = _existing_ffmpeg_paths()
-
-    if required_encoder:
-        for path in candidates:
-            if _ffmpeg_has_encoder(path, required_encoder):
-                return path
-        # None of the existing binaries has it; return the default below and let
-        # the caller decide how to fall back.
-
-    if candidates:
-        return candidates[0]
-
-    # 4. Auto-download static build
-    print("xx- FastSaver: ffmpeg not found. Downloading static build...")
-    os.makedirs(_FFMPEG_DIR, exist_ok=True)
-
-    urls = {
-        ("Linux", "x86_64"):  "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz",
-        ("Linux", "aarch64"): "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz",
-        ("Windows", "AMD64"): "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
-    }
+    if _DOWNLOAD_ATTEMPTED:
+        return local_bin if os.path.isfile(local_bin) else None
+    _DOWNLOAD_ATTEMPTED = True
 
     machine = platform.machine()
-    key = (system, machine)
-    url = urls.get(key)
+    url = _FFMPEG_URLS.get((system, machine))
     if not url:
         raise RuntimeError(
             f"No automatic ffmpeg download available for {system}/{machine}. "
             f"Please install ffmpeg manually or place a binary in {_FFMPEG_DIR}"
         )
 
+    print(f"xx- FastSaver: downloading NVENC-enabled ffmpeg (BtbN) for {system}/{machine}...")
+    os.makedirs(_FFMPEG_DIR, exist_ok=True)
     archive_path = os.path.join(_FFMPEG_DIR, "ffmpeg_archive")
     try:
         urllib.request.urlretrieve(url, archive_path)
@@ -123,9 +111,8 @@ def _get_ffmpeg(required_encoder=None):
             with zipfile.ZipFile(archive_path, "r") as zf:
                 for name in zf.namelist():
                     if name.endswith("bin/ffmpeg.exe"):
-                        data = zf.read(name)
                         with open(local_bin, "wb") as f:
-                            f.write(data)
+                            f.write(zf.read(name))
                         break
     finally:
         if os.path.exists(archive_path):
@@ -140,6 +127,40 @@ def _get_ffmpeg(required_encoder=None):
 
     print(f"xx- FastSaver: ffmpeg downloaded to {local_bin}")
     return local_bin
+
+
+def _get_ffmpeg(required_encoder=None):
+    """Find or download a ffmpeg binary. Search order:
+    1. Bundled binary in this node's ffmpeg_bin/ folder
+    2. imageio_ffmpeg (shipped by VideoHelperSuite)
+    3. System PATH
+    4. Auto-download an NVENC-enabled static build into ffmpeg_bin/
+
+    If required_encoder is given (e.g. 'av1_nvenc'), prefer the first existing
+    binary that provides it; if none do, self-provision an NVENC build. Otherwise
+    return the highest-priority existing binary (downloading only if none exist).
+    """
+    candidates = _existing_ffmpeg_paths()
+
+    if required_encoder:
+        for path in candidates:
+            if _ffmpeg_has_encoder(path, required_encoder):
+                return path
+        # No existing binary provides it — try to self-provision an NVENC build.
+        try:
+            downloaded = _download_ffmpeg()
+        except Exception as e:
+            print(f"xx- FastSaver: could not download NVENC ffmpeg: {e}")
+            downloaded = None
+        if downloaded and _ffmpeg_has_encoder(downloaded, required_encoder):
+            return downloaded
+        # Still unavailable (e.g. arm64 without NVENC) — fall through to the
+        # default so the caller can drop to a CPU codec.
+
+    if candidates:
+        return candidates[0]
+
+    return _download_ffmpeg()
 
 _COLOR_MGMT = [
     "-vf", "scale=out_color_matrix=bt709",
