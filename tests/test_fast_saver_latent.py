@@ -108,3 +108,33 @@ def test_load_latent_absolute_rejects_relative_paths():
 
     with pytest.raises(ValueError, match="absolute"):
         JDL_LoadLatentAbsolute().load_latent("sample.latent")
+
+
+def test_hw_cpu_fallback_maps_to_valid_same_container_formats():
+    import fast_saver as fs
+
+    # Every fallback target exists and keeps the same container extension.
+    for hw, cpu in fs._HW_CPU_FALLBACK.items():
+        assert hw in fs.VIDEO_FORMATS, hw
+        assert cpu in fs.VIDEO_FORMATS, cpu
+        assert fs.VIDEO_FORMATS[hw]["ext"] == fs.VIDEO_FORMATS[cpu]["ext"], hw
+
+    # Every hardware (nvenc) format must define a CPU fallback.
+    for name in fs.VIDEO_FORMATS:
+        if "nvenc" in name:
+            assert name in fs._HW_CPU_FALLBACK, name
+
+
+def test_get_ffmpeg_prefers_binary_with_required_encoder(monkeypatch):
+    import fast_saver as fs
+
+    monkeypatch.setattr(fs, "_existing_ffmpeg_paths", lambda: ["/static/ffmpeg", "/nvenc/ffmpeg"])
+    monkeypatch.setattr(fs, "_ffmpeg_has_encoder",
+                        lambda p, e: p == "/nvenc/ffmpeg" and e == "av1_nvenc")
+
+    # Required encoder lives in the lower-priority binary -> that one wins.
+    assert fs._get_ffmpeg("av1_nvenc") == "/nvenc/ffmpeg"
+    # No requirement -> highest-priority existing binary.
+    assert fs._get_ffmpeg() == "/static/ffmpeg"
+    # Required encoder available nowhere -> default binary (caller handles fallback).
+    assert fs._get_ffmpeg("h264_nvenc") == "/static/ffmpeg"

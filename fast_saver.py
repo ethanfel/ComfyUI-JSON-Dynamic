@@ -22,34 +22,72 @@ _NODE_DIR = os.path.dirname(os.path.abspath(__file__))
 _FFMPEG_DIR = os.path.join(_NODE_DIR, "ffmpeg_bin")
 
 
-def _get_ffmpeg():
+_ENCODER_CACHE = {}
+
+
+def _ffmpeg_has_encoder(ffmpeg_path, encoder):
+    """Return True if this ffmpeg binary provides the named encoder (cached)."""
+    key = (ffmpeg_path, encoder)
+    if key in _ENCODER_CACHE:
+        return _ENCODER_CACHE[key]
+    found = False
+    try:
+        out = subprocess.run([ffmpeg_path, "-hide_banner", "-encoders"],
+                             capture_output=True, text=True, timeout=15)
+        found = encoder in out.stdout.split()
+    except Exception:
+        found = False
+    _ENCODER_CACHE[key] = found
+    return found
+
+
+def _existing_ffmpeg_paths():
+    """Existing ffmpeg binaries in priority order (bundled, imageio, PATH). No download."""
+    system = platform.system()
+    exe_name = "ffmpeg.exe" if system == "Windows" else "ffmpeg"
+    local_bin = os.path.join(_FFMPEG_DIR, exe_name)
+
+    paths = []
+    def _add(p):
+        if p and os.path.isfile(p) and p not in paths:
+            paths.append(p)
+
+    _add(local_bin)
+    try:
+        import imageio_ffmpeg
+        _add(imageio_ffmpeg.get_ffmpeg_exe())
+    except Exception:
+        pass
+    _add(shutil.which("ffmpeg"))
+    return paths
+
+
+def _get_ffmpeg(required_encoder=None):
     """Find or download a ffmpeg binary. Search order:
     1. Bundled binary in this node's ffmpeg_bin/ folder
     2. imageio_ffmpeg (shipped by VideoHelperSuite)
     3. System PATH
     4. Auto-download a static build into ffmpeg_bin/
+
+    If required_encoder is given (e.g. 'av1_nvenc'), prefer the first existing
+    binary that actually provides it; otherwise return the highest-priority
+    existing binary, downloading a static build only if none exist.
     """
     system = platform.system()
     exe_name = "ffmpeg.exe" if system == "Windows" else "ffmpeg"
     local_bin = os.path.join(_FFMPEG_DIR, exe_name)
 
-    # 1. Already downloaded
-    if os.path.isfile(local_bin):
-        return local_bin
+    candidates = _existing_ffmpeg_paths()
 
-    # 2. imageio_ffmpeg
-    try:
-        import imageio_ffmpeg
-        path = imageio_ffmpeg.get_ffmpeg_exe()
-        if path and os.path.isfile(path):
-            return path
-    except Exception:
-        pass
+    if required_encoder:
+        for path in candidates:
+            if _ffmpeg_has_encoder(path, required_encoder):
+                return path
+        # None of the existing binaries has it; return the default below and let
+        # the caller decide how to fall back.
 
-    # 3. System PATH
-    system_bin = shutil.which("ffmpeg")
-    if system_bin:
-        return system_bin
+    if candidates:
+        return candidates[0]
 
     # 4. Auto-download static build
     print("xx- FastSaver: ffmpeg not found. Downloading static build...")
@@ -143,6 +181,15 @@ VIDEO_FORMATS = {
     # WebM containers only allow Opus/Vorbis audio, not AAC.
     "nvenc_av1-webm":{"ext": ".webm", "codec": ["-c:v", "av1_nvenc"],
                       "quality": "bitrate", "color_mgmt": True, "acodec": "libopus"},
+}
+
+# If a hardware (NVENC) format is picked but the encoder is missing from the
+# resolved ffmpeg, fall back to the CPU codec that produces the SAME container.
+_HW_CPU_FALLBACK = {
+    "nvenc_h264-mp4": "mp4",       # h264_nvenc -> libx264
+    "nvenc_hevc-mp4": "h265-mp4",  # hevc_nvenc -> libx265
+    "nvenc_av1-mp4":  "av1-mp4",   # av1_nvenc  -> libsvtav1
+    "nvenc_av1-webm": "webm",      # av1_nvenc  -> libvpx-vp9
 }
 
 
@@ -347,8 +394,28 @@ class FastAbsoluteSaver:
                    scores_list=None, metadata_key="sharpness_score", save_workflow=False, prompt_data=None, extra_data=None,
                    bitrate=10, prores_profile="hq", gif_dither="sierra2_4a", audio=None):
         """Save image batch as a video file using ffmpeg. frames_np is a list/array of uint8 numpy arrays."""
-        ffmpeg_path = _get_ffmpeg()
         fmt = VIDEO_FORMATS[video_format]
+
+        # Resolve ffmpeg, preferring one that provides this format's hardware encoder.
+        codec_list = fmt.get("codec", [])
+        required_encoder = None
+        if "-c:v" in codec_list:
+            enc = codec_list[codec_list.index("-c:v") + 1]
+            if any(tag in enc for tag in ("nvenc", "qsv", "vaapi", "amf")):
+                required_encoder = enc
+
+        ffmpeg_path = _get_ffmpeg(required_encoder)
+
+        # If the hardware encoder still isn't available anywhere, fall back to the
+        # CPU codec for the same container so the run's output isn't lost.
+        if required_encoder and not _ffmpeg_has_encoder(ffmpeg_path, required_encoder):
+            fallback = _HW_CPU_FALLBACK.get(video_format)
+            if fallback:
+                print(f"xx- FastSaver: WARNING: '{required_encoder}' is not available in "
+                      f"ffmpeg ({ffmpeg_path}); falling back to CPU format '{fallback}' "
+                      f"(slower). Install an ffmpeg built with NVENC for GPU encoding.")
+                video_format = fallback
+                fmt = VIDEO_FORMATS[video_format]
 
         ext = fmt["ext"]
         if use_timestamp:
