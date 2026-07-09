@@ -4,7 +4,7 @@ import torch
 from fast_saver import FastAbsoluteSaver
 
 
-def _save_args(tmp_path, *, save_format="png", latent=None):
+def _save_args(tmp_path, *, save_format="png", latent=None, save_latent=True):
     return {
         "images": torch.zeros((1, 2, 2, 3), dtype=torch.float32),
         "output_path": str(tmp_path),
@@ -18,6 +18,7 @@ def _save_args(tmp_path, *, save_format="png", latent=None):
         "metadata_key": "sharpness_score",
         "save_workflow_metadata": False,
         "save_metadata_png": False,
+        "save_latent": save_latent,
         "webp_lossless": True,
         "webp_quality": 100,
         "webp_method": 4,
@@ -51,6 +52,17 @@ def test_png_save_returns_latent_passthrough(tmp_path):
 
     result = saver.save_images_fast(**_save_args(tmp_path, latent=latent))
 
+    assert result["result"] == (latent,)
+    assert result["result"][0] is latent
+
+
+def test_png_save_latent_false_skips_sidecar_but_keeps_passthrough(tmp_path):
+    saver = FastAbsoluteSaver()
+    latent = {"samples": torch.ones((1, 1, 2, 2))}
+
+    result = saver.save_images_fast(**_save_args(tmp_path, latent=latent, save_latent=False))
+
+    assert not (tmp_path / "frame_0000.latent").exists()
     assert result["result"] == (latent,)
     assert result["result"][0] is latent
 

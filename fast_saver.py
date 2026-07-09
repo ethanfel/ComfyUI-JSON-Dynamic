@@ -139,6 +139,10 @@ VIDEO_FORMATS = {
     "nvenc_av1-mp4": {"ext": ".mp4",  "codec": ["-c:v", "av1_nvenc"],
                       "quality": "bitrate", "color_mgmt": True, "acodec": "aac",
                       "extra": ["-movflags", "+faststart"]},
+    # GPU webm: NVENC has no VP9 encoder, so use AV1 (a valid WebM codec) on the GPU.
+    # WebM containers only allow Opus/Vorbis audio, not AAC.
+    "nvenc_av1-webm":{"ext": ".webm", "codec": ["-c:v", "av1_nvenc"],
+                      "quality": "bitrate", "color_mgmt": True, "acodec": "libopus"},
 }
 
 
@@ -164,7 +168,8 @@ class FastAbsoluteSaver:
 
                 # --- FORMAT SWITCH ---
                 "save_format": (["png", "webp", "mp4", "webm", "h265-mp4", "av1-mp4", "gif",
-                                 "ffv1-mkv", "prores-mov", "nvenc_h264-mp4", "nvenc_hevc-mp4", "nvenc_av1-mp4"], ),
+                                 "ffv1-mkv", "prores-mov", "nvenc_h264-mp4", "nvenc_hevc-mp4", "nvenc_av1-mp4",
+                                 "nvenc_av1-webm"], ),
 
                 # --- NAMING CONTROL ---
                 "use_timestamp": ("BOOLEAN", {"default": False, "label": "Add Timestamp (Unique)"}),
@@ -176,6 +181,7 @@ class FastAbsoluteSaver:
                 "metadata_key": ("STRING", {"default": "sharpness_score"}),
                 "save_workflow_metadata": ("BOOLEAN", {"default": False, "label": "Save ComfyUI Workflow (Graph)"}),
                 "save_metadata_png": ("BOOLEAN", {"default": False, "label": "Embed Workflow in PNG (sidecar or first file)"}),
+                "save_latent": ("BOOLEAN", {"default": True, "label": "Save Latent Sidecar"}),
 
                 # --- PERFORMANCE ---
                 "max_threads": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1, "label": "Max Threads (0=Auto)"}),
@@ -504,7 +510,7 @@ class FastAbsoluteSaver:
         return out_file
 
     def save_images_fast(self, images, output_path, filename_prefix, save_format, use_timestamp, auto_increment, counter_digits,
-                         max_threads, filename_with_score, metadata_key, save_workflow_metadata, save_metadata_png,
+                         max_threads, filename_with_score, metadata_key, save_workflow_metadata, save_metadata_png, save_latent,
                          webp_lossless, webp_quality, webp_method,
                          video_fps, video_crf, video_pixel_format,
                          video_bitrate, prores_profile, gif_dither,
@@ -538,7 +544,7 @@ class FastAbsoluteSaver:
                             extra_data=extra_pnginfo,
                             bitrate=video_bitrate, prores_profile=prores_profile,
                             gif_dither=gif_dither, audio=audio)
-            if latent is not None:
+            if latent is not None and save_latent:
                 self._save_latent_sidecar(latent, out_file)
             # Save metadata sidecar PNG next to the video file
             if save_metadata_png:
@@ -612,7 +618,7 @@ class FastAbsoluteSaver:
                 if future.result():
                     saved_image_paths.append(full_path)
 
-        if latent is not None:
+        if latent is not None and save_latent:
             for image_path in saved_image_paths:
                 self._save_latent_sidecar(latent, image_path)
 
